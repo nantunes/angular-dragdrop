@@ -8,12 +8,38 @@
     function determineEffectAllowed(e) {
         // Chrome doesn't set dropEffect, so we have to work it out ourselves
         if (typeof e.dataTransfer !== 'undefined' && e.dataTransfer.dropEffect === 'none') {
-            if (e.dataTransfer.effectAllowed === 'copy' ||
-                e.dataTransfer.effectAllowed === 'move') {
-                e.dataTransfer.dropEffect = e.dataTransfer.effectAllowed;
-            } else if (e.dataTransfer.effectAllowed === 'copyMove' || e.dataTransfer.effectAllowed === 'copymove') {
-                e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+            var mode;
+            var allowed = e.dataTransfer.effectAllowed.toLowerCase();
+
+            if (allowed.length === 4) {
+                mode = allowed;
+            } else {
+                if (allowed === 'all') {
+                    allowed = 'copy move link';
+                }
+
+                mode = e.ctrlKey || e.altKey ? 'copy' : (e.metaKey ? 'link' : 'move');
+
+                if (allowed.indexOf(mode) === -1) {
+                    if (mode === 'link') {
+                        // can't link, default to copy if possible, move otherwise
+                        mode = allowed.indexOf('copy') !== -1 ? 'copy' : 'move';
+                    } else if (mode === 'move') {
+                        // can't move, default to copy if possible, link otherwise
+                        mode = allowed.indexOf('copy') !== -1 ? 'copy' : 'link';
+                    } else if (mode === 'copy') {
+                        // can't copy, default to move if possible, link otherwise
+                        mode = allowed.indexOf('move') !== -1 ? 'move' : 'link';
+                    }
+
+                    if (allowed.indexOf(mode) === -1) {
+                        // not even the fallback is possible
+                        mode = 'none';
+                    }
+                }
             }
+
+            e.dataTransfer.dropEffect = mode;
         }
     }
 
@@ -66,8 +92,6 @@
                 }, 0);
                 var sendChannel = attrs.dragChannel || 'defaultchannel';
                 $rootScope.$broadcast('ANGULAR_DRAG_END', e, sendChannel);
-
-                determineEffectAllowed(e);
 
                 if (e.dataTransfer && e.dataTransfer.dropEffect !== 'none') {
                     if (attrs.onDropSuccess) {
@@ -157,7 +181,12 @@
                     var transferDataText = angular.toJson(transferDataObject);
 
                     e.dataTransfer.setData('text', transferDataText);
-                    e.dataTransfer.effectAllowed = 'copyMove';
+                    e.dataTransfer.effectAllowed = attrs.effectAllowed || 'copyMove';
+                    if(!e.dataTransfer.effectAllowed || e.dataTransfer.effectAllowed === "uninitialized") {
+                        // also default to copyMove if invalid
+                        // will be "uninitialized" if invalid
+                        e.dataTransfer.effectAllowed = 'copyMove';
+                    }
 
                     $rootScope.$broadcast('ANGULAR_DRAG_START', e, sendChannel, transferDataObject);
                 }
@@ -248,6 +277,8 @@
                 if (e.stopPropagation) {
                     e.stopPropagation();
                 }
+
+                determineEffectAllowed(e);
 
                 if (dragging === 0) {
                     scope.$evalAsync(function() {
